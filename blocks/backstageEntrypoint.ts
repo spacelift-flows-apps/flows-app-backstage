@@ -63,6 +63,54 @@ export const backstageEntrypoint: AppBlock = {
       },
       required: false,
     },
+    parameters: {
+      name: "Form Parameters",
+      description:
+        "Form fields shown to users when they launch this template in Backstage. Each parameter becomes a field in the template form and is passed to the workflow on submission.",
+      fixed: true,
+      required: false,
+      type: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description:
+                "Field identifier (used as the key in the submitted data)",
+            },
+            title: {
+              type: "string",
+              description: "Display label shown in the form",
+            },
+            description: {
+              type: "string",
+              description: "Help text shown below the field",
+            },
+            type: {
+              type: "string",
+              enum: ["string", "number", "boolean"],
+              description: "Field data type",
+            },
+            required: {
+              type: "boolean",
+              description: "Whether the field is required",
+            },
+            default: {
+              type: "string",
+              description: "Default value for the field",
+            },
+            enum: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "List of allowed values (renders as a dropdown for string fields)",
+            },
+          },
+          required: ["name", "title", "type"],
+        },
+      },
+    },
   },
 
   async onSync(input) {

@@ -7,7 +7,10 @@ import {
 } from "@slflows/sdk/v1";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { blocks } from "./blocks/index";
-import { generateMultiDocumentYaml } from "./utils/templateYaml";
+import {
+  generateMultiDocumentYaml,
+  type TemplateParameter,
+} from "./utils/templateYaml";
 
 const KV_KEYS = {
   AUTH_TOKEN: "authToken",
@@ -100,6 +103,9 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
               owner: b.config!.owner as string,
               templateType: b.config!.templateType as string | undefined,
               tags: b.config!.tags as string[] | undefined,
+              parameters: b.config!.parameters as
+                | TemplateParameter[]
+                | undefined,
             })),
           );
 
