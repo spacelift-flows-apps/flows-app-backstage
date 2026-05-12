@@ -2,9 +2,9 @@ import { defineApp } from "@slflows/sdk/v1";
 import { blocks } from "./blocks/index";
 
 export const app = defineApp({
-  name: "{{APP_NAME}}",
+  name: "Backstage Integration",
   installationInstructions:
-    "{{APP_DESCRIPTION}}\n\nTo install:\n1. Add your API key\n2. Configure the base URL if needed\n3. Start using the blocks in your flows",
+    "Integrates with Backstage's Software Templates, providing registration and an entrypoint.\n\nTo install:\n1. Add your API key\n2. Configure the base URL if needed\n3. Start using the blocks in your flows",
 
   blocks,
 

@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 
 # Flows app specific
 bundle.tar.gz
+
+# Local AI assistant files
+.claude
