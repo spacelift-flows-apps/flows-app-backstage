@@ -7,6 +7,7 @@ import {
 } from "@slflows/sdk/v1";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { blocks } from "./blocks/index";
+import { generateMultiDocumentYaml } from "./utils/templateYaml";
 
 const KV_KEYS = {
   AUTH_TOKEN: "authToken",
@@ -74,10 +75,38 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
     onRequest: async ({ request }) => {
       switch (request.path) {
         case "/templates.yaml": {
-          // Step 3: serve template YAML
+          const { blocks: entrypointBlocks } = await blocksApi.list({
+            typeIds: ["backstageEntrypoint"],
+          });
+
+          const readyBlocks = entrypointBlocks.filter(
+            (b) => b.config?.slug && b.config?.title && b.config?.owner,
+          );
+
+          if (readyBlocks.length === 0) {
+            await http.respond(request.requestId, {
+              statusCode: 200,
+              headers: { "Content-Type": "text/yaml" },
+              body: "# No Backstage Entrypoint blocks configured yet\n",
+            });
+            return;
+          }
+
+          const yaml = generateMultiDocumentYaml(
+            readyBlocks.map((b) => ({
+              slug: b.config!.slug as string,
+              title: b.config!.title as string,
+              description: b.config!.description as string | undefined,
+              owner: b.config!.owner as string,
+              templateType: b.config!.templateType as string | undefined,
+              tags: b.config!.tags as string[] | undefined,
+            })),
+          );
+
           await http.respond(request.requestId, {
-            statusCode: 501,
-            body: "Not implemented yet",
+            statusCode: 200,
+            headers: { "Content-Type": "text/yaml" },
+            body: yaml,
           });
           return;
         }
