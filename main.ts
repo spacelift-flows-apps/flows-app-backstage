@@ -78,13 +78,7 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
     onRequest: async ({ request }) => {
       switch (request.path) {
         case "/templates.yaml": {
-          const { blocks: entrypointBlocks } = await blocksApi.list({
-            typeIds: ["backstageEntrypoint"],
-          });
-
-          const readyBlocks = entrypointBlocks.filter(
-            (b) => b.config?.slug && b.config?.title && b.config?.owner,
-          );
+          const readyBlocks = await getConfirmedBlocks();
 
           if (readyBlocks.length === 0) {
             await http.respond(request.requestId, {
@@ -155,11 +149,8 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
           return;
         }
 
-        const { blocks: entrypointBlocks } = await blocksApi.list({
-          typeIds: ["backstageEntrypoint"],
-        });
-
-        const matchedBlock = entrypointBlocks.find(
+        const confirmedBlocks = await getConfirmedBlocks();
+        const matchedBlock = confirmedBlocks.find(
           (b) => b.config?.slug === slug,
         );
 
@@ -214,3 +205,16 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
 
   blocks,
 });
+
+async function getConfirmedBlocks() {
+  const { blocks: allBlocks } = await blocksApi.list({
+    typeIds: ["backstageEntrypoint"],
+  });
+
+  const confirmed = await kv.app.list({ keyPrefix: "confirmed:" });
+  const confirmedIds = new Set(
+    confirmed.pairs.map((p) => p.key.slice("confirmed:".length)),
+  );
+
+  return allBlocks.filter((b) => confirmedIds.has(b.id));
+}

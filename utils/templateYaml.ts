@@ -27,7 +27,7 @@ export function generateTemplateYaml(blockConfig: BlockConfig): string {
     `  title: ${yamlEscape(title)}`,
   ];
   if (description) {
-    metadata.push(`  description: ${yamlEscape(description)}`);
+    metadata.push(`  description: ${yamlEscape(singleLine(description))}`);
   }
   if (tags && tags.length > 0) {
     metadata.push(`  tags:`);
@@ -96,10 +96,12 @@ function renderParameters(parameters?: TemplateParameter[]): string {
   lines.push(`      properties:`);
   for (const param of parameters) {
     lines.push(`        ${param.name}:`);
-    lines.push(`          title: ${yamlEscape(param.title)}`);
+    lines.push(`          title: ${yamlEscape(singleLine(param.title))}`);
     lines.push(`          type: ${param.type}`);
     if (param.description) {
-      lines.push(`          description: ${yamlEscape(param.description)}`);
+      lines.push(
+        `          description: ${yamlEscape(singleLine(param.description))}`,
+      );
     }
     if (param.default !== undefined) {
       lines.push(`          default: ${yamlEscape(param.default)}`);
@@ -129,6 +131,10 @@ function renderBody(parameters?: TemplateParameter[]): string {
 
 export function generateMultiDocumentYaml(blocks: BlockConfig[]): string {
   return blocks.map(generateTemplateYaml).join("\n---\n");
+}
+
+function singleLine(value: string): string {
+  return value.replace(/\s*\n\s*/g, " ").trim();
 }
 
 function yamlEscape(value: string): string {

@@ -152,11 +152,17 @@ export const backstageEntrypoint: AppBlock = {
     }
 
     await kv.block.set({ key: "slug", value: slug });
+    await kv.app.set({
+      key: `confirmed:${input.block.id}`,
+      value: true,
+    });
 
     return { newStatus: "ready" };
   },
 
-  async onDrain() {
+  async onDrain(input) {
+    await kv.app.delete([`confirmed:${input.block.id}`]);
+
     const allKeys = await kv.block.list({ keyPrefix: "" });
     const keysToDelete = allKeys.pairs.map((pair) => pair.key);
     if (keysToDelete.length > 0) {
