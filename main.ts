@@ -16,6 +16,7 @@ import {
 } from "./utils/templateYAML.ts";
 import {
   strippedBackstageURL,
+  verifyBackstageConnection,
   refreshBackstageCatalog,
 } from "./utils/backstageClient.ts";
 
@@ -165,10 +166,7 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
     }
 
     try {
-      const response = await refreshBackstageCatalog(
-        input.app.config,
-        input.app.http.url,
-      );
+      const response = await verifyBackstageConnection(input.app.config);
 
       if (response.status === 401) {
         return {
@@ -199,6 +197,8 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
         (existing as string | undefined) || randomBytes(32).toString("hex");
 
       await kv.app.set({ key: KV_KEYS.AUTH_TOKEN, value: authToken });
+
+      refreshBackstageCatalog(input.app.config, input.app.http.url);
 
       return {
         newStatus: "ready",
@@ -343,7 +343,8 @@ async function handleTrigger(request: HTTPRequest) {
 
   await http.respond(request.requestId, {
     statusCode: 202,
-    body: { status: "accepted", slug, message: successMessage },
+    headers: { "Content-Type": "text/plain" },
+    body: successMessage,
   });
 }
 

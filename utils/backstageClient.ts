@@ -14,6 +14,16 @@ function locationEntityRef(
   return `location:${namespace}/flows-templates-${endpointSlug(endpointUrl)}`;
 }
 
+export async function verifyBackstageConnection(
+  config: Record<string, unknown>,
+): Promise<Response> {
+  const backstageUrl = strippedBackstageURL(config);
+  return fetch(
+    `${backstageUrl}/api/catalog/entities?filter=kind=template&limit=1`,
+    { headers: catalogHeaders(config) },
+  );
+}
+
 export async function refreshBackstageCatalog(
   config: Record<string, unknown>,
   endpointUrl: string,
