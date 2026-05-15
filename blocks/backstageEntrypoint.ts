@@ -1,4 +1,5 @@
 import { AppBlock, blocks, events, kv } from "@slflows/sdk/v1";
+import { refreshBackstageCatalog } from "../utils/backstageClient.ts";
 
 const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set(["templates.yaml", "templates", "trigger"]);
@@ -17,21 +18,18 @@ export const backstageEntrypoint: AppBlock = {
         "URL-friendly identifier for this template (lowercase letters, numbers, hyphens). Used in the trigger URL and as the template name in Backstage.",
       type: "string",
       required: true,
-      fixed: true,
     },
     title: {
       name: "Title",
       description: "Display title shown in Backstage's template catalog",
       type: "string",
       required: true,
-      fixed: true,
     },
     description: {
       name: "Description",
       description: "Description shown in Backstage's template catalog",
       type: "string",
       required: false,
-      fixed: true,
     },
     // TODO: If we add the Backstage instance URL + token as app config, we could
     // use suggestValues to fetch owners from the Backstage catalog API
@@ -42,7 +40,6 @@ export const backstageEntrypoint: AppBlock = {
         "Backstage owner reference (e.g., 'platform-team' or 'group:default/platform-team')",
       type: "string",
       required: true,
-      fixed: true,
     },
     templateType: {
       name: "Type",
@@ -51,12 +48,10 @@ export const backstageEntrypoint: AppBlock = {
       type: "string",
       required: false,
       default: "service",
-      fixed: true,
     },
     tags: {
       name: "Tags",
       description: "Tags for filtering in Backstage's template catalog",
-      fixed: true,
       type: {
         type: "array",
         items: { type: "string" },
@@ -67,7 +62,6 @@ export const backstageEntrypoint: AppBlock = {
       name: "Form Parameters",
       description:
         "Form fields shown to users when they launch this template in Backstage. Each parameter becomes a field in the template form and is passed to the workflow on submission.",
-      fixed: true,
       required: false,
       type: {
         type: "array",
@@ -157,6 +151,8 @@ export const backstageEntrypoint: AppBlock = {
       value: true,
     });
 
+    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+
     return { newStatus: "ready" };
   },
 
@@ -168,6 +164,9 @@ export const backstageEntrypoint: AppBlock = {
     if (keysToDelete.length > 0) {
       await kv.block.delete(keysToDelete);
     }
+
+    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+
     return { newStatus: "drained" };
   },
 

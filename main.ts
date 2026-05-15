@@ -14,6 +14,10 @@ import {
   generateTemplateYAML,
   type TemplateParameter,
 } from "./utils/templateYAML.ts";
+import {
+  strippedBackstageURL,
+  refreshBackstageCatalog,
+} from "./utils/backstageClient.ts";
 
 const KV_KEYS = {
   AUTH_TOKEN: "authToken",
@@ -37,7 +41,29 @@ export const app = defineApp({
 
 Add the following to your Backstage \`app-config.yaml\`:
 
-**1. Allow the Flows endpoint host** (so the catalog can fetch templates):
+**1. Configure external access** (so Flows can communicate with the Backstage API):
+
+Set a token as an environment variable before starting Backstage:
+
+\`\`\`
+export BACKSTAGE_API_TOKEN=<any-secret-string-you-choose>
+\`\`\`
+
+Then add to \`app-config.yaml\`:
+
+\`\`\`yaml
+backend:
+  auth:
+    externalAccess:
+      - type: static
+        options:
+          token: \${BACKSTAGE_API_TOKEN}
+          subject: flows-service
+\`\`\`
+
+Use this token as the **Backstage API Token** in the app configuration.
+
+**2. Allow the Flows endpoint host** (so the catalog can fetch templates):
 
 \`\`\`yaml
 backend:
@@ -46,7 +72,7 @@ backend:
       - host: {appEndpointHost}
 \`\`\`
 
-**2. Add the template catalog location** (Backstage will poll this for new templates):
+**3. Add the template catalog location** (Backstage will poll this for new templates):
 
 \`\`\`yaml
 catalog:
@@ -57,7 +83,13 @@ catalog:
         - allow: [Location, Template]
 \`\`\`
 
-**3. Configure the proxy** (so templates can trigger workflows):
+**4. Configure the proxy** (so templates can trigger workflows):
+
+Set the Flows auth token as environment variables before starting Backstage:
+
+\`\`\`
+export FLOWS_AUTH_HEADER="Bearer <auth-token-from-signals-tab>"
+\`\`\`
 
 \`\`\`yaml
 proxy:
@@ -66,16 +98,29 @@ proxy:
       target: {appEndpointUrl}
       changeOrigin: true
       headers:
-        Authorization: 'Bearer <your-auth-token>'
+        Authorization: \${FLOWS_AUTH_HEADER}
 \`\`\`
 
-Replace \`<your-auth-token>\` with the **Auth Token** from the **Signals** tab.
+**5. Restart your Backstage backend** to apply the config changes.
 
-**4. Restart your Backstage backend** to apply the config changes.
-
-After setup, any Backstage Entrypoint block you add will automatically appear in Backstage's "Create" page within a few minutes.`,
+After setup, any Backstage Entrypoint block you add will appear in Backstage's "Create" page shortly after being confirmed.`,
 
   config: {
+    backstageUrl: {
+      name: "Backstage URL",
+      description:
+        "Base URL of the Backstage backend (e.g., https://backstage.example.com:7007)",
+      type: "string",
+      required: true,
+    },
+    backstageApiToken: {
+      name: "Backstage API Token",
+      description:
+        "Static API token for authenticating with Backstage (configured in backend.auth.externalAccess)",
+      type: "string",
+      required: true,
+      sensitive: true,
+    },
     namespace: {
       name: "Namespace",
       description:
@@ -117,6 +162,35 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
     }
 
     try {
+      const response = await refreshBackstageCatalog(
+        input.app.config,
+        input.app.http.url,
+      );
+
+      if (response.status === 401) {
+        return {
+          newStatus: "failed",
+          customStatusDescription:
+            "Backstage API token is invalid. Verify backend.auth.externalAccess is configured and the token matches.",
+        };
+      }
+
+      if (!response.ok) {
+        return {
+          newStatus: "failed",
+          customStatusDescription: `Backstage returned HTTP ${response.status}. Verify the Backstage URL is correct and the backend is running.`,
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const backstageUrl = strippedBackstageURL(input.app.config);
+      return {
+        newStatus: "failed",
+        customStatusDescription: `Cannot reach Backstage at ${backstageUrl}: ${message}`,
+      };
+    }
+
+    try {
       const { value: existing } = await kv.app.get(KV_KEYS.AUTH_TOKEN);
       const authToken =
         (existing as string | undefined) || randomBytes(32).toString("hex");
@@ -129,12 +203,18 @@ After setup, any Backstage Entrypoint block you add will automatically appear in
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("Failed to sync Backstage app:", message);
       return {
         newStatus: "failed",
         customStatusDescription: `Sync failed: ${message}`,
       };
     }
+  },
+
+  async onDrain(input) {
+    // Best-effort refresh — the endpoint may already be torn down.
+    // Safer to remove the catalog location from Backstage config first.
+    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+    return { newStatus: "drained" };
   },
 
   blocks,
@@ -155,18 +235,7 @@ async function handleTemplatesIndex(
     return;
   }
 
-  const blockConfigs = readyBlocks.map((b) => ({
-    slug: b.config!.slug as string,
-    title: b.config!.title as string,
-    description: b.config!.description as string | undefined,
-    owner: b.config!.owner as string,
-    templateType: b.config!.templateType as string | undefined,
-    tags: b.config!.tags as string[] | undefined,
-    parameters: b.config!.parameters as
-      | TemplateParameter[]
-      | undefined,
-  }));
-
+  const blockConfigs = readyBlocks.map(toBlockConfig);
   const namespace = app.config.namespace as string | undefined;
   const yaml = generateLocationYAML(app.http.url, blockConfigs, namespace);
 
@@ -192,17 +261,7 @@ async function handleTemplateYAML(request: HTTPRequest) {
     return;
   }
 
-  const yaml = generateTemplateYAML({
-    slug: matchedBlock.config!.slug as string,
-    title: matchedBlock.config!.title as string,
-    description: matchedBlock.config!.description as string | undefined,
-    owner: matchedBlock.config!.owner as string,
-    templateType: matchedBlock.config!.templateType as string | undefined,
-    tags: matchedBlock.config!.tags as string[] | undefined,
-    parameters: matchedBlock.config!.parameters as
-      | TemplateParameter[]
-      | undefined,
-  });
+  const yaml = generateTemplateYAML(toBlockConfig(matchedBlock));
 
   await http.respond(request.requestId, {
     statusCode: 200,
@@ -283,4 +342,16 @@ async function getConfirmedBlocks() {
   );
 
   return allBlocks.filter((b) => confirmedIds.has(b.id));
+}
+
+function toBlockConfig(b: { config?: Record<string, unknown> | null }) {
+  return {
+    slug: b.config!.slug as string,
+    title: b.config!.title as string,
+    description: b.config!.description as string | undefined,
+    owner: b.config!.owner as string,
+    templateType: b.config!.templateType as string | undefined,
+    tags: b.config!.tags as string[] | undefined,
+    parameters: b.config!.parameters as TemplateParameter[] | undefined,
+  };
 }

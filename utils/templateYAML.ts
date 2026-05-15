@@ -1,3 +1,5 @@
+import { endpointSlug } from "./backstageClient.ts";
+
 export interface TemplateParameter {
   name: string;
   title: string;
@@ -138,7 +140,7 @@ export function generateLocationYAML(
     `apiVersion: backstage.io/v1alpha1`,
     `kind: Location`,
     `metadata:`,
-    `  name: flows-templates-${new URL(baseUrl).hostname.split(".")[0]}`,
+    `  name: flows-templates-${endpointSlug(baseUrl)}`,
   ];
   if (namespace) {
     lines.push(`  namespace: ${namespace}`);
