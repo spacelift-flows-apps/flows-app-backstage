@@ -4,6 +4,7 @@ import {
   fetchOwners,
   fetchTemplateTypes,
 } from "../utils/backstageClient.ts";
+import type { TemplateParameter } from "../utils/templateYAML.ts";
 
 const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set(["templates.yaml", "templates", "trigger"]);
@@ -184,7 +185,40 @@ export const backstageEntrypoint: AppBlock = {
 
     await refreshBackstageCatalog(input.app.config, input.app.http.url);
 
-    return { newStatus: "ready" };
+    const parameters = (input.block.config.parameters ?? []) as TemplateParameter[];
+    const parametersSchema: Record<string, unknown> =
+      parameters.length > 0
+        ? {
+            type: "object",
+            properties: Object.fromEntries(
+              parameters.map((p) => [p.name, { type: p.type }]),
+            ),
+            required: parameters
+              .filter((p) => p.required)
+              .map((p) => p.name),
+          }
+        : { type: "object" };
+
+    return {
+      newStatus: "ready",
+      outputUpdates: {
+        default: {
+          name: "Template Triggered",
+          description:
+            "Emitted when a user submits this Software Template in Backstage",
+          default: true,
+          type: {
+            type: "object",
+            properties: {
+              slug: { type: "string" },
+              triggeredAt: { type: "string" },
+              parameters: parametersSchema,
+            },
+            required: ["slug", "triggeredAt", "parameters"],
+          },
+        },
+      },
+    };
   },
 
   async onDrain(input) {
