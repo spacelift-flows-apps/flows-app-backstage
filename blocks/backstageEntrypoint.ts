@@ -5,8 +5,7 @@ import {
   fetchTemplateTypes,
 } from "../utils/backstageClient.ts";
 import type { TemplateParameter } from "../utils/templateYAML.ts";
-
-const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+import { IDENTIFIER_PATTERN } from "../utils/validation.ts";
 const RESERVED_SLUGS = new Set(["templates.yaml", "templates", "trigger"]);
 
 export const backstageEntrypoint: AppBlock = {
@@ -157,7 +156,7 @@ export const backstageEntrypoint: AppBlock = {
       };
     }
 
-    if (!SLUG_PATTERN.test(slug)) {
+    if (!IDENTIFIER_PATTERN.test(slug)) {
       return {
         newStatus: "failed",
         customStatusDescription: `Invalid slug "${slug}". Use only lowercase letters, numbers, and hyphens. Must start and end with a letter or number.`,

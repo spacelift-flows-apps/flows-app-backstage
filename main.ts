@@ -19,6 +19,7 @@ import {
   verifyBackstageConnection,
   refreshBackstageCatalog,
 } from "./utils/backstageClient.ts";
+import { IDENTIFIER_PATTERN } from "./utils/validation.ts";
 
 const KV_KEYS = {
   AUTH_TOKEN: "authToken",
@@ -125,7 +126,7 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
     namespace: {
       name: "Namespace",
       description:
-        "Grouping identifier for templates in the Backstage catalog, used to isolate across teams or environments (e.g., platform-team). Lowercase, alphanumeric, hyphens, and underscores only.",
+        "Grouping identifier for templates in the Backstage catalog, used to isolate across teams or environments (e.g., platform-team). Lowercase, alphanumeric, and hyphens only.",
       type: "string",
       required: false,
     },
@@ -157,11 +158,11 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
 
   async onSync(input) {
     const namespace = input.app.config.namespace as string | undefined;
-    if (namespace && !/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/.test(namespace)) {
+    if (namespace && !IDENTIFIER_PATTERN.test(namespace)) {
       return {
         newStatus: "failed",
         customStatusDescription:
-          "Invalid namespace. Use only lowercase letters, numbers, hyphens, and underscores. Must start and end with a letter or number.",
+          "Invalid namespace. Use only lowercase letters, numbers, and hyphens. Must start and end with a letter or number.",
       };
     }
 
