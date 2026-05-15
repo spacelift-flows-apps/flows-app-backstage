@@ -136,7 +136,10 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
         return handleTemplatesIndex(request, app);
       }
 
-      if (request.path.startsWith("/templates/") && request.path.endsWith(".yaml")) {
+      if (
+        request.path.startsWith("/templates/") &&
+        request.path.endsWith(".yaml")
+      ) {
         return handleTemplateYAML(request);
       }
 
@@ -236,6 +239,7 @@ async function handleTemplatesIndex(
   }
 
   const blockConfigs = readyBlocks.map(toBlockConfig);
+
   const namespace = app.config.namespace as string | undefined;
   const yaml = generateLocationYAML(app.http.url, blockConfigs, namespace);
 
@@ -249,9 +253,7 @@ async function handleTemplatesIndex(
 async function handleTemplateYAML(request: HTTPRequest) {
   const slug = request.path.slice("/templates/".length, -".yaml".length);
   const confirmedBlocks = await getConfirmedBlocks();
-  const matchedBlock = confirmedBlocks.find(
-    (b) => b.config?.slug === slug,
-  );
+  const matchedBlock = confirmedBlocks.find((b) => b.config?.slug === slug);
 
   if (!matchedBlock) {
     await http.respond(request.requestId, {
@@ -279,7 +281,8 @@ async function handleTrigger(request: HTTPRequest) {
     return;
   }
 
-  const authHeader = request.headers["Authorization"] || request.headers["authorization"] || "";
+  const authHeader =
+    request.headers["Authorization"] || request.headers["authorization"] || "";
   const token = authHeader.toLowerCase().startsWith("bearer ")
     ? authHeader.slice(7)
     : "";
@@ -308,9 +311,7 @@ async function handleTrigger(request: HTTPRequest) {
   }
 
   const confirmedBlocks = await getConfirmedBlocks();
-  const matchedBlock = confirmedBlocks.find(
-    (b) => b.config?.slug === slug,
-  );
+  const matchedBlock = confirmedBlocks.find((b) => b.config?.slug === slug);
 
   if (!matchedBlock) {
     await http.respond(request.requestId, {
@@ -320,7 +321,8 @@ async function handleTrigger(request: HTTPRequest) {
     return;
   }
 
-  const parameters = (matchedBlock.config?.parameters ?? []) as TemplateParameter[];
+  const parameters = (matchedBlock.config?.parameters ??
+    []) as TemplateParameter[];
   const errors = validateBody(request.body ?? {}, parameters);
   if (errors.length > 0) {
     await http.respond(request.requestId, {
@@ -368,7 +370,11 @@ function validateBody(
       continue;
     }
 
-    if (param.enum && param.enum.length > 0 && !param.enum.includes(String(value))) {
+    if (
+      param.enum &&
+      param.enum.length > 0 &&
+      !param.enum.includes(String(value))
+    ) {
       errors.push(
         `Field "${param.name}" must be one of: ${param.enum.join(", ")}`,
       );

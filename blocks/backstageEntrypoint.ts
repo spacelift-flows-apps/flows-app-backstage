@@ -71,8 +71,8 @@ export const backstageEntrypoint: AppBlock = {
         if (input.searchPhrase) {
           const search = input.searchPhrase.toLowerCase();
           return {
-            suggestedValues: values.filter(
-              (v) => v.label.toLowerCase().includes(search),
+            suggestedValues: values.filter((v) =>
+              v.label.toLowerCase().includes(search),
             ),
           };
         }
@@ -193,7 +193,8 @@ export const backstageEntrypoint: AppBlock = {
 
     await refreshBackstageCatalog(input.app.config, input.app.http.url);
 
-    const parameters = (input.block.config.parameters ?? []) as TemplateParameter[];
+    const parameters = (input.block.config.parameters ??
+      []) as TemplateParameter[];
     const parametersSchema: Record<string, unknown> =
       parameters.length > 0
         ? {
@@ -201,9 +202,7 @@ export const backstageEntrypoint: AppBlock = {
             properties: Object.fromEntries(
               parameters.map((p) => [p.name, { type: p.type }]),
             ),
-            required: parameters
-              .filter((p) => p.required)
-              .map((p) => p.name),
+            required: parameters.filter((p) => p.required).map((p) => p.name),
           }
         : { type: "object" };
 

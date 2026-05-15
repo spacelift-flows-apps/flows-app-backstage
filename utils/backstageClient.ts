@@ -37,10 +37,7 @@ export async function refreshBackstageCatalog(
 const cache = new Map<string, { data: unknown; expiresAt: number }>();
 const CACHE_TTL_MS = 60_000;
 
-async function cachedFetch<T>(
-  key: string,
-  fn: () => Promise<T>,
-): Promise<T> {
+async function cachedFetch<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data as T;
