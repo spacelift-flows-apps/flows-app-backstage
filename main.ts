@@ -199,7 +199,7 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
 
       await kv.app.set({ key: KV_KEYS.AUTH_TOKEN, value: authToken });
 
-      refreshBackstageCatalog(input.app.config, input.app.http.url);
+      await refreshBackstageCatalog(input.app.config, input.app.http.url);
 
       return {
         newStatus: "ready",
