@@ -320,15 +320,62 @@ async function handleTrigger(request: HTTPRequest) {
     return;
   }
 
+  const parameters = (matchedBlock.config?.parameters ?? []) as TemplateParameter[];
+  const errors = validateBody(request.body ?? {}, parameters);
+  if (errors.length > 0) {
+    await http.respond(request.requestId, {
+      statusCode: 400,
+      body: { error: "Validation failed", details: errors },
+    });
+    return;
+  }
+
   await messaging.sendToBlocks({
     body: request.body ?? {},
     blockIds: [matchedBlock.id],
   });
 
+  const successMessage =
+    (matchedBlock.config?.successMessage as string | undefined) ||
+    "Workflow triggered successfully.";
+
   await http.respond(request.requestId, {
     statusCode: 202,
-    body: { status: "accepted", slug },
+    body: { status: "accepted", slug, message: successMessage },
   });
+}
+
+function validateBody(
+  body: Record<string, unknown>,
+  parameters: TemplateParameter[],
+): string[] {
+  const errors: string[] = [];
+
+  for (const param of parameters) {
+    const value = body[param.name];
+
+    if (value === undefined || value === null) {
+      if (param.required) {
+        errors.push(`Missing required field "${param.name}"`);
+      }
+      continue;
+    }
+
+    if (typeof value !== param.type) {
+      errors.push(
+        `Field "${param.name}" must be ${param.type}, got ${typeof value}`,
+      );
+      continue;
+    }
+
+    if (param.enum && param.enum.length > 0 && !param.enum.includes(String(value))) {
+      errors.push(
+        `Field "${param.name}" must be one of: ${param.enum.join(", ")}`,
+      );
+    }
+  }
+
+  return errors;
 }
 
 async function getConfirmedBlocks() {

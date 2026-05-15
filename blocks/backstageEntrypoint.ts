@@ -24,18 +24,6 @@ export const backstageEntrypoint: AppBlock = {
       type: "string",
       required: true,
     },
-    title: {
-      name: "Title",
-      description: "Display title shown in Backstage's template catalog",
-      type: "string",
-      required: true,
-    },
-    description: {
-      name: "Description",
-      description: "Description shown in Backstage's template catalog",
-      type: "string",
-      required: false,
-    },
     owner: {
       name: "Owner",
       description:
@@ -58,6 +46,18 @@ export const backstageEntrypoint: AppBlock = {
             : undefined,
         };
       },
+    },
+    title: {
+      name: "Title",
+      description: "Display title shown in Backstage's template catalog",
+      type: "string",
+      required: true,
+    },
+    description: {
+      name: "Description",
+      description: "Description shown in Backstage's template catalog",
+      type: "string",
+      required: false,
     },
     templateType: {
       name: "Type",
@@ -89,6 +89,14 @@ export const backstageEntrypoint: AppBlock = {
         items: { type: "string" },
       },
       required: false,
+    },
+    successMessage: {
+      name: "Success Message",
+      description:
+        "Message shown in Backstage after a successful trigger. Defaults to 'Workflow triggered successfully.'",
+      type: "string",
+      required: false,
+      default: "Workflow triggered successfully.",
     },
     parameters: {
       name: "Form Parameters",

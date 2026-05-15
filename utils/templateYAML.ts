@@ -62,15 +62,18 @@ ${bodyYAML}
         continueOnBadResponse: true
   output:
     text:
-      - title: Response
+      - title: Result
         content: |
-          {%- if steps['trigger-flow'].output.code | int >= 400 %}
+          {%- if steps['trigger-flow'].output.code | int == 400 %}
+          **Validation failed**
+
+          \${{ steps['trigger-flow'].output.body.details | join('\\n- ') }}
+          {%- elif steps['trigger-flow'].output.code | int >= 400 %}
           **Request failed (status \${{ steps['trigger-flow'].output.code }})**
 
           Please contact the Platform team for assistance.
           {%- else %}
-          **Status:** \${{ steps['trigger-flow'].output.code }}
-          **Body:** \${{ steps['trigger-flow'].output.body }}
+          \${{ steps['trigger-flow'].output.body.message }}
           {%- endif %}`;
 
   return output;
