@@ -18,7 +18,7 @@ interface BlockConfig {
   parameters?: TemplateParameter[];
 }
 
-export function generateTemplateYaml(blockConfig: BlockConfig): string {
+export function generateTemplateYAML(blockConfig: BlockConfig): string {
   const { slug, title, description, owner, templateType, tags, parameters } =
     blockConfig;
 
@@ -36,8 +36,8 @@ export function generateTemplateYaml(blockConfig: BlockConfig): string {
     }
   }
 
-  const parametersYaml = renderParameters(parameters);
-  const bodyYaml = renderBody(parameters);
+  const parametersYAML = renderParameters(parameters);
+  const bodyYAML = renderBody(parameters);
 
   const output = `apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
@@ -46,7 +46,7 @@ ${metadata.join("\n")}
 spec:
   owner: ${yamlEscape(owner)}
   type: ${yamlEscape(templateType || "service")}
-${parametersYaml}
+${parametersYAML}
   steps:
     - id: trigger-flow
       name: Trigger Flows Workflow
@@ -56,7 +56,7 @@ ${parametersYaml}
         path: /proxy/flows/trigger/${slug}
         headers:
           Content-Type: application/json
-${bodyYaml}
+${bodyYAML}
         continueOnBadResponse: true
   output:
     text:
@@ -129,8 +129,25 @@ function renderBody(parameters?: TemplateParameter[]): string {
   return lines.join("\n");
 }
 
-export function generateMultiDocumentYaml(blocks: BlockConfig[]): string {
-  return blocks.map(generateTemplateYaml).join("\n---\n");
+export function generateLocationYAML(
+  baseUrl: string,
+  blocks: BlockConfig[],
+  namespace?: string,
+): string {
+  const lines: string[] = [
+    `apiVersion: backstage.io/v1alpha1`,
+    `kind: Location`,
+    `metadata:`,
+    `  name: flows-templates-${new URL(baseUrl).hostname.split(".")[0]}`,
+  ];
+  if (namespace) {
+    lines.push(`  namespace: ${namespace}`);
+  }
+  lines.push(`spec:`, `  type: url`, `  targets:`);
+  for (const block of blocks) {
+    lines.push(`    - ${baseUrl}/templates/${block.slug}.yaml`);
+  }
+  return lines.join("\n");
 }
 
 function singleLine(value: string): string {
