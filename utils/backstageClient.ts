@@ -31,3 +31,80 @@ export async function refreshBackstageCatalog(
     body: JSON.stringify({ entityRef }),
   });
 }
+
+// Simple TTL cache for catalog queries to avoid hammering the API during
+// suggestValues calls as the user types.
+const cache = new Map<string, { data: unknown; expiresAt: number }>();
+const CACHE_TTL_MS = 60_000;
+
+async function cachedFetch<T>(
+  key: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data as T;
+  }
+  const data = await fn();
+  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+  return data;
+}
+
+interface CatalogEntity {
+  kind: string;
+  metadata: { name: string; namespace?: string; tags?: string[] };
+  spec?: { type?: string };
+}
+
+function catalogHeaders(config: Record<string, unknown>) {
+  return { Authorization: `Bearer ${config.backstageApiToken as string}` };
+}
+
+const OWNERS_LIMIT = 200;
+
+export async function fetchOwners(
+  config: Record<string, unknown>,
+): Promise<{ values: { label: string; value: string }[]; capped: boolean }> {
+  const backstageUrl = strippedBackstageURL(config);
+
+  const entities = await cachedFetch<CatalogEntity[]>("owners", async () => {
+    const response = await fetch(
+      `${backstageUrl}/api/catalog/entities?filter=kind=group&filter=kind=user&fields=kind,metadata.name,metadata.namespace&limit=${OWNERS_LIMIT}`,
+      { headers: catalogHeaders(config) },
+    );
+    if (!response.ok) return [];
+    return response.json();
+  });
+
+  const values = entities.map((e) => {
+    const ref =
+      `${e.kind}:${e.metadata.namespace || "default"}/${e.metadata.name}`.toLowerCase();
+    return { label: `${e.metadata.name} (${ref})`, value: ref };
+  });
+
+  return { values, capped: entities.length >= OWNERS_LIMIT };
+}
+
+export async function fetchTemplateTypes(
+  config: Record<string, unknown>,
+): Promise<{ label: string; value: string }[]> {
+  const backstageUrl = strippedBackstageURL(config);
+
+  const entities = await cachedFetch<CatalogEntity[]>("types", async () => {
+    const response = await fetch(
+      `${backstageUrl}/api/catalog/entities?filter=kind=template&fields=spec.type`,
+      { headers: catalogHeaders(config) },
+    );
+    if (!response.ok) return [];
+    return response.json();
+  });
+
+  const types = new Set<string>();
+  for (const e of entities) {
+    if (e.spec?.type) {
+      types.add(e.spec.type);
+    }
+  }
+
+  return [...types].sort().map((t) => ({ label: t, value: t }));
+}

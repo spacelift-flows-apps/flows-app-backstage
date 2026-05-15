@@ -1,5 +1,9 @@
 import { AppBlock, blocks, events, kv } from "@slflows/sdk/v1";
-import { refreshBackstageCatalog } from "../utils/backstageClient.ts";
+import {
+  refreshBackstageCatalog,
+  fetchOwners,
+  fetchTemplateTypes,
+} from "../utils/backstageClient.ts";
 
 const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set(["templates.yaml", "templates", "trigger"]);
@@ -31,15 +35,28 @@ export const backstageEntrypoint: AppBlock = {
       type: "string",
       required: false,
     },
-    // TODO: If we add the Backstage instance URL + token as app config, we could
-    // use suggestValues to fetch owners from the Backstage catalog API
-    // (e.g. GET /api/catalog/entities?filter=kind=group).
     owner: {
       name: "Owner",
       description:
         "Backstage owner reference (e.g., 'platform-team' or 'group:default/platform-team')",
       type: "string",
       required: true,
+      suggestValues: async (input) => {
+        const { values, capped } = await fetchOwners(input.app.config);
+        let filtered = values;
+        if (input.searchPhrase) {
+          const search = input.searchPhrase.toLowerCase();
+          filtered = values.filter((v) =>
+            v.label.toLowerCase().includes(search),
+          );
+        }
+        return {
+          suggestedValues: filtered,
+          message: capped
+            ? "Results may be incomplete. You can type a value manually."
+            : undefined,
+        };
+      },
     },
     templateType: {
       name: "Type",
@@ -48,7 +65,21 @@ export const backstageEntrypoint: AppBlock = {
       type: "string",
       required: false,
       default: "service",
+      suggestValues: async (input) => {
+        const values = await fetchTemplateTypes(input.app.config);
+        if (input.searchPhrase) {
+          const search = input.searchPhrase.toLowerCase();
+          return {
+            suggestedValues: values.filter(
+              (v) => v.label.toLowerCase().includes(search),
+            ),
+          };
+        }
+        return { suggestedValues: values };
+      },
     },
+    // TODO: add suggestValues once multi-select is supported
+    // (https://github.com/spacelift-io/spaceflows/pull/2284).
     tags: {
       name: "Tags",
       description: "Tags for filtering in Backstage's template catalog",
