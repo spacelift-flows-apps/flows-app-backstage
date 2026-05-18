@@ -215,9 +215,13 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
   },
 
   async onDrain(input) {
-    // Best-effort refresh — the endpoint may already be torn down.
-    // Safer to remove the catalog location from Backstage config first.
-    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+    // Best-effort: if Backstage is unreachable, it will pick up the
+    // updated location on its next poll cycle once it's back.
+    try {
+      await refreshBackstageCatalog(input.app.config, input.app.http.url);
+    } catch (error) {
+      console.log(`Catalog refresh failed during drain: ${error}`);
+    }
     return { newStatus: "drained" };
   },
 

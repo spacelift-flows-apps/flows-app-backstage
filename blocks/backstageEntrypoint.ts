@@ -236,7 +236,13 @@ export const backstageEntrypoint: AppBlock = {
       await kv.block.delete(keysToDelete);
     }
 
-    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+    // Best-effort: if Backstage is unreachable, it will pick up the
+    // updated location on its next poll cycle once it's back.
+    try {
+      await refreshBackstageCatalog(input.app.config, input.app.http.url);
+    } catch (error) {
+      console.log(`Catalog refresh failed during drain: ${error}`);
+    }
 
     return { newStatus: "drained" };
   },
