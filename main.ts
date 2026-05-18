@@ -37,21 +37,13 @@ export const app = defineApp({
     },
   },
 
-  installationInstructions: `Integrates with Backstage Software Templates. Each Backstage Entrypoint block you add registers as a Software Template in Backstage.
+  installationInstructions: `## Prerequisites
 
-## Backstage Configuration
+If not set up already, these are common Backstage features this app depends on.
 
-Add the following to your Backstage \`app-config.yaml\`:
+### External access token
 
-**1. Configure external access** (so Flows can communicate with the Backstage API):
-
-Set a token as an environment variable before starting Backstage:
-
-\`\`\`
-export BACKSTAGE_API_TOKEN=<any-secret-string-you-choose>
-\`\`\`
-
-Then add to \`app-config.yaml\`:
+Add to \`app-config.yaml\`:
 
 \`\`\`yaml
 backend:
@@ -63,9 +55,33 @@ backend:
           subject: flows-service
 \`\`\`
 
+Then, set a token as an environment variable before starting Backstage.
+
+\`\`\`sh
+export BACKSTAGE_API_TOKEN=<any-secret-string-you-choose>
+\`\`\`
+
 Use this token as the **Backstage API Token** in the app configuration.
 
-**2. Allow the Flows endpoint host** (so the catalog can fetch templates):
+### HTTP scaffolder action
+
+Add this plugin so templates can make requests to Flows:
+
+\`\`\`sh
+yarn --cwd packages/backend add @roadiehq/scaffolder-backend-module-http-request
+\`\`\`
+
+Then, register it in \`packages/backend/src/index.ts\`:
+
+\`\`\`ts
+backend.add(import('@roadiehq/scaffolder-backend-module-http-request'));
+\`\`\`
+
+## Backstage Configuration
+
+Add the following to your Backstage \`app-config.yaml\`:
+
+### 1. Allow the Flows endpoint host
 
 \`\`\`yaml
 backend:
@@ -74,7 +90,7 @@ backend:
       - host: {appEndpointHost}
 \`\`\`
 
-**3. Add the template catalog location** (Backstage will poll this for new templates):
+### 2. Add the template catalog location
 
 \`\`\`yaml
 catalog:
@@ -85,11 +101,11 @@ catalog:
         - allow: [Location, Template]
 \`\`\`
 
-**4. Configure the proxy** (so templates can trigger workflows):
+### 3. Configure the proxy
 
-Set the Flows auth token as environment variables before starting Backstage:
+On app installation confirmation, a Flows auth token is generated. Use it to build the authorization header in the proxy:
 
-\`\`\`
+\`\`\`sh
 export FLOWS_AUTH_HEADER="Bearer <auth-token-from-signals-tab>"
 \`\`\`
 
@@ -103,7 +119,7 @@ proxy:
         Authorization: \${FLOWS_AUTH_HEADER}
 \`\`\`
 
-**5. Restart your Backstage backend** to apply the config changes.
+### 4. Restart your Backstage backend
 
 After setup, any Backstage Entrypoint block you add will appear in Backstage's "Create" page shortly after being confirmed.`,
 
