@@ -15,7 +15,6 @@ import {
   type TemplateParameter,
 } from "./utils/templateYAML.ts";
 import {
-  strippedBackstageURL,
   verifyBackstageConnection,
   refreshBackstageCatalog,
 } from "./utils/backstageClient.ts";
@@ -182,52 +181,34 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
       };
     }
 
-    try {
-      const response = await verifyBackstageConnection(input.app.config);
+    const response = await verifyBackstageConnection(input.app.config);
 
-      if (response.status === 401) {
-        return {
-          newStatus: "failed",
-          customStatusDescription:
-            "Backstage API token is invalid. Verify backend.auth.externalAccess is configured and the token matches.",
-        };
-      }
-
-      if (!response.ok) {
-        return {
-          newStatus: "failed",
-          customStatusDescription: `Backstage returned HTTP ${response.status}. Verify the Backstage URL is correct and the backend is running.`,
-        };
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const backstageUrl = strippedBackstageURL(input.app.config);
+    if (response.status === 401) {
       return {
         newStatus: "failed",
-        customStatusDescription: `Cannot reach Backstage at ${backstageUrl}: ${message}`,
+        customStatusDescription:
+          "Backstage API token is invalid. Verify backend.auth.externalAccess is configured and the token matches.",
       };
     }
 
-    try {
-      const { value: existing } = await kv.app.get(KV_KEYS.AUTH_TOKEN);
-      const authToken =
-        (existing as string | undefined) || randomBytes(32).toString("hex");
-
-      await kv.app.set({ key: KV_KEYS.AUTH_TOKEN, value: authToken });
-
-      await refreshBackstageCatalog(input.app.config, input.app.http.url);
-
-      return {
-        newStatus: "ready",
-        signalUpdates: { authToken },
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+    if (!response.ok) {
       return {
         newStatus: "failed",
-        customStatusDescription: `Sync failed: ${message}`,
+        customStatusDescription: `Backstage returned HTTP ${response.status}. Verify the Backstage URL is correct and the backend is running.`,
       };
     }
+
+    const { value: existingAuth } = await kv.app.get(KV_KEYS.AUTH_TOKEN);
+    const authToken =
+      (existingAuth as string | undefined) || randomBytes(32).toString("hex");
+    await kv.app.set({ key: KV_KEYS.AUTH_TOKEN, value: authToken });
+
+    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+
+    return {
+      newStatus: "ready",
+      signalUpdates: { authToken },
+    };
   },
 
   async onDrain(input) {
