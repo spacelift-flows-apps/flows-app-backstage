@@ -132,7 +132,8 @@ function renderBody(parameters?: TemplateParameter[]): string {
 export function generateLocationYAML(
   baseUrl: string,
   blocks: BlockConfig[],
-  namespace?: string,
+  namespace: string | undefined,
+  urlSecret: string,
 ): string {
   const lines: string[] = [
     `apiVersion: backstage.io/v1alpha1`,
@@ -143,9 +144,10 @@ export function generateLocationYAML(
   if (namespace) {
     lines.push(`  namespace: ${namespace}`);
   }
+  const pathPrefix = `/${urlSecret}`;
   lines.push(`spec:`, `  type: url`, `  targets:`);
   for (const block of blocks) {
-    lines.push(`    - ${baseUrl}/templates/${block.slug}.yaml`);
+    lines.push(`    - ${baseUrl}${pathPrefix}/templates/${block.slug}.yaml`);
   }
   return lines.join("\n");
 }

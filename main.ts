@@ -22,6 +22,7 @@ import { IDENTIFIER_PATTERN } from "./utils/validation.ts";
 
 const KV_KEYS = {
   AUTH_TOKEN: "authToken",
+  URL_SECRET: "urlSecret",
 };
 
 export const app = defineApp({
@@ -32,6 +33,12 @@ export const app = defineApp({
       name: "Auth Token",
       description:
         "Auto-generated token for authenticating requests from Backstage. Use this value in your Backstage proxy configuration.",
+      sensitivity: "hide_by_default",
+    },
+    catalogUrl: {
+      name: "Catalog URL",
+      description:
+        "URL for the Backstage catalog location. Use this as the target in your catalog.locations config.",
       sensitivity: "hide_by_default",
     },
   },
@@ -76,11 +83,9 @@ Then, register it in \`packages/backend/src/index.ts\`:
 backend.add(import('@roadiehq/scaffolder-backend-module-http-request'));
 \`\`\`
 
-## Backstage Configuration
+### Allow the Flows endpoint host
 
-Add the following to your Backstage \`app-config.yaml\`:
-
-### 1. Allow the Flows endpoint host
+Add to \`app-config.yaml\`:
 
 \`\`\`yaml
 backend:
@@ -89,24 +94,27 @@ backend:
       - host: {appEndpointHost}
 \`\`\`
 
-### 2. Add the template catalog location
+## Backstage Configuration
+
+After confirming the app installation, copy the values from the **Signals** tab and set them as environment variables before starting Backstage:
+
+\`\`\`sh
+export FLOWS_CATALOG_URL="<Catalog URL from Signals tab>"
+export FLOWS_AUTH_HEADER="Bearer <Auth Token from Signals tab>"
+\`\`\`
+
+### 1. Add the template catalog location
 
 \`\`\`yaml
 catalog:
   locations:
     - type: url
-      target: {appEndpointUrl}/templates.yaml
+      target: \${FLOWS_CATALOG_URL}
       rules:
         - allow: [Location, Template]
 \`\`\`
 
-### 3. Configure the proxy
-
-On app installation confirmation, a Flows auth token is generated. Use it to build the authorization header in the proxy:
-
-\`\`\`sh
-export FLOWS_AUTH_HEADER="Bearer <auth-token-from-signals-tab>"
-\`\`\`
+### 2. Configure the proxy
 
 \`\`\`yaml
 proxy:
@@ -118,7 +126,7 @@ proxy:
         Authorization: \${FLOWS_AUTH_HEADER}
 \`\`\`
 
-### 4. Restart your Backstage backend
+### 3. Restart your Backstage backend
 
 After setup, any Backstage Entrypoint block you add will appear in Backstage's "Create" page shortly after being confirmed.`,
 
@@ -149,15 +157,19 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
 
   http: {
     onRequest: async ({ request, app }) => {
-      if (request.path === "/templates.yaml") {
-        return handleTemplatesIndex(request, app);
-      }
+      const { value: urlSecret } = await kv.app.get(KV_KEYS.URL_SECRET);
 
-      if (
-        request.path.startsWith("/templates/") &&
-        request.path.endsWith(".yaml")
-      ) {
-        return handleTemplateYAML(request);
+      if (urlSecret && request.path.startsWith(`/${urlSecret}/`)) {
+        const subPath = request.path.slice(String(urlSecret).length + 1);
+
+        if (subPath === "/templates.yaml") {
+          return handleTemplatesIndex(request, app, urlSecret as string);
+        }
+
+        if (subPath.startsWith("/templates/") && subPath.endsWith(".yaml")) {
+          const slug = subPath.slice("/templates/".length, -".yaml".length);
+          return handleTemplateYAML(request, slug);
+        }
       }
 
       if (request.path.startsWith("/trigger/")) {
@@ -203,11 +215,19 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
       (existingAuth as string | undefined) || randomBytes(32).toString("hex");
     await kv.app.set({ key: KV_KEYS.AUTH_TOKEN, value: authToken });
 
+    const { value: existingUrlToken } = await kv.app.get(KV_KEYS.URL_SECRET);
+    const urlSecret =
+      (existingUrlToken as string | undefined) ||
+      randomBytes(32).toString("base64url");
+    await kv.app.set({ key: KV_KEYS.URL_SECRET, value: urlSecret });
+
     await refreshBackstageCatalog(input.app.config, input.app.http.url);
+
+    const catalogUrl = `${input.app.http.url}/${urlSecret}/templates.yaml`;
 
     return {
       newStatus: "ready",
-      signalUpdates: { authToken },
+      signalUpdates: { authToken, catalogUrl },
     };
   },
 
@@ -228,6 +248,7 @@ After setup, any Backstage Entrypoint block you add will appear in Backstage's "
 async function handleTemplatesIndex(
   request: HTTPRequest,
   app: { http: AppHTTPEndpoint; config: Record<string, unknown> },
+  urlSecret: string,
 ) {
   const readyBlocks = await getConfirmedBlocks();
 
@@ -243,7 +264,12 @@ async function handleTemplatesIndex(
   const blockConfigs = readyBlocks.map(toBlockConfig);
 
   const namespace = app.config.namespace as string | undefined;
-  const yaml = generateLocationYAML(app.http.url, blockConfigs, namespace);
+  const yaml = generateLocationYAML(
+    app.http.url,
+    blockConfigs,
+    namespace,
+    urlSecret,
+  );
 
   await http.respond(request.requestId, {
     statusCode: 200,
@@ -252,8 +278,7 @@ async function handleTemplatesIndex(
   });
 }
 
-async function handleTemplateYAML(request: HTTPRequest) {
-  const slug = request.path.slice("/templates/".length, -".yaml".length);
+async function handleTemplateYAML(request: HTTPRequest, slug: string) {
   const confirmedBlocks = await getConfirmedBlocks();
   const matchedBlock = confirmedBlocks.find((b) => b.config?.slug === slug);
 

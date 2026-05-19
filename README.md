@@ -18,8 +18,9 @@ Backstage, letting you trigger Flows workflows from Backstage's "Create" page.
 - **Namespace** -- grouping identifier for templates in the Backstage catalog,
   used to isolate across teams or environments (e.g., `platform-team`).
 
-An auth token for incoming requests from Backstage is auto-generated on install
-and exposed as a signal.
+On install, an auth token (for incoming requests from Backstage) and a catalog
+URL (for Backstage location ingestion) are auto-generated and exposed as
+signals.
 
 ## Blocks
 
@@ -70,8 +71,8 @@ Set these before starting Backstage:
 
 ```bash
 export BACKSTAGE_API_TOKEN=<any-secret-string-you-choose>
-export FLOWS_API_TOKEN=<auth-token-from-signals-tab>
-export FLOWS_AUTH_HEADER="Bearer $FLOWS_API_TOKEN"
+export FLOWS_CATALOG_URL="<Catalog URL from Signals tab>"
+export FLOWS_AUTH_HEADER="Bearer <Auth Token from Signals tab>"
 ```
 
 ### app-config.yaml
@@ -94,7 +95,7 @@ backend:
 catalog:
   locations:
     - type: url
-      target: <APP_ENDPOINT>/templates.yaml
+      target: ${FLOWS_CATALOG_URL}
       rules:
         - allow: [Location, Template]
 
