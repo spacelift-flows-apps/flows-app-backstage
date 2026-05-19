@@ -119,13 +119,12 @@ function renderParameters(parameters?: TemplateParameter[]): string {
 }
 
 function renderBody(parameters?: TemplateParameter[]): string {
-  if (!parameters || parameters.length === 0) {
-    return `        body: {}`;
-  }
-
   const lines: string[] = [`        body:`];
-  for (const param of parameters) {
-    lines.push(`          ${param.name}: \${{ parameters.${param.name} }}`);
+  lines.push(`          userRef: \${{ user.ref }}`);
+  if (parameters && parameters.length > 0) {
+    for (const param of parameters) {
+      lines.push(`          ${param.name}: \${{ parameters.${param.name} }}`);
+    }
   }
   return lines.join("\n");
 }
