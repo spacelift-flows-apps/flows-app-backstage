@@ -1,3 +1,4 @@
+import { stringify } from "yaml";
 import { endpointSlug } from "./backstageClient.ts";
 
 export interface TemplateParameter {
@@ -24,109 +25,150 @@ export function generateTemplateYAML(blockConfig: BlockConfig): string {
   const { slug, title, description, owner, templateType, tags, parameters } =
     blockConfig;
 
-  const metadata: string[] = [
-    `  name: ${slug}`,
-    `  title: ${yamlEscape(title)}`,
-  ];
+  const metadata: Record<string, unknown> = {
+    name: slug,
+    title,
+  };
   if (description) {
-    metadata.push(`  description: ${yamlEscape(singleLine(description))}`);
+    // Backstage shows the description as a single line in the catalog card,
+    // so collapse any newlines from the config into spaces.
+    metadata.description = description.replace(/\s*\n\s*/g, " ").trim();
   }
   if (tags && tags.length > 0) {
-    metadata.push(`  tags:`);
-    for (const tag of tags) {
-      metadata.push(`    - ${yamlEscape(tag)}`);
-    }
+    metadata.tags = tags;
   }
 
-  const parametersYAML = renderParameters(parameters);
-  const bodyYAML = renderBody(parameters);
+  const parametersSpec = buildParametersSpec(parameters);
+  const body = buildBody(parameters);
 
-  const output = `apiVersion: scaffolder.backstage.io/v1beta3
-kind: Template
-metadata:
-${metadata.join("\n")}
-spec:
-  owner: ${yamlEscape(owner)}
-  type: ${yamlEscape(templateType || "service")}
-${parametersYAML}
-  steps:
-    - id: trigger-flow
-      name: Trigger Flows Workflow
-      action: http:backstage:request
-      input:
-        method: POST
-        path: /proxy/flows/trigger/${slug}
-        headers:
-          Content-Type: application/json
-${bodyYAML}
-        continueOnBadResponse: true
-  output:
-    text:
-      - title: Response
-        content: |
-          {%- if steps['trigger-flow'].output.code | int >= 400 %}
-          **Request failed (status \${{ steps['trigger-flow'].output.code }})**
+  // Built as a literal string so the Backstage ${{ }} expressions and
+  // Jinja-style {%- if %} blocks are preserved verbatim in the YAML output.
+  const outputContent = [
+    `{%- if steps['trigger-flow'].output.code | int >= 400 %}`,
+    `**Request failed (status \${{ steps['trigger-flow'].output.code }})**`,
+    ``,
+    `Please contact the Platform team for assistance.`,
+    `{%- else %}`,
+    `\${{ steps['trigger-flow'].output.body.message }}`,
+    `{%- endif %}`,
+  ].join("\n");
 
-          Please contact the Platform team for assistance.
-          {%- else %}
-          \${{ steps['trigger-flow'].output.body.message }}
-          {%- endif %}`;
+  const doc = {
+    apiVersion: "scaffolder.backstage.io/v1beta3",
+    kind: "Template",
+    metadata,
+    spec: {
+      owner: owner,
+      type: templateType || "service",
+      parameters: parametersSpec,
+      steps: [
+        {
+          id: "trigger-flow",
+          name: "Trigger Flows Workflow",
+          action: "http:backstage:request",
+          input: {
+            method: "POST",
+            path: `/proxy/flows/trigger/${slug}`,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body,
+            continueOnBadResponse: true,
+          },
+        },
+      ],
+      output: {
+        text: [
+          {
+            title: "Response",
+            content: outputContent,
+          },
+        ],
+      },
+    },
+  };
 
-  return output;
+  return stringify(doc, {
+    lineWidth: 0,
+    defaultStringType: "PLAIN",
+    defaultKeyType: "PLAIN",
+    blockQuote: "literal",
+  });
 }
 
-function renderParameters(parameters?: TemplateParameter[]): string {
+function buildParametersSpec(
+  parameters?: TemplateParameter[],
+): Record<string, unknown>[] {
   if (!parameters || parameters.length === 0) {
-    return `  parameters:
-    - title: Confirm
-      description: This will trigger the workflow.
-      properties: {}`;
+    return [
+      {
+        title: "Confirm",
+        description: "This will trigger the workflow.",
+        properties: {},
+      },
+    ];
   }
 
-  const lines: string[] = [`  parameters:`];
-  lines.push(`    - title: Parameters`);
+  const requiredFields = parameters
+    .filter((p) => p.required)
+    .map((p) => p.name);
 
-  const requiredFields = parameters.filter((p) => p.required);
-  if (requiredFields.length > 0) {
-    lines.push(`      required:`);
-    for (const field of requiredFields) {
-      lines.push(`        - ${field.name}`);
-    }
-  }
-
-  lines.push(`      properties:`);
+  const properties: Record<string, Record<string, unknown>> = {};
   for (const param of parameters) {
-    lines.push(`        ${param.name}:`);
-    lines.push(`          title: ${yamlEscape(singleLine(param.title))}`);
-    lines.push(`          type: ${param.type}`);
+    const prop: Record<string, unknown> = {
+      title: param.title.replace(/\s*\n\s*/g, " ").trim(),
+      type: param.type,
+    };
     if (param.description) {
-      lines.push(
-        `          description: ${yamlEscape(singleLine(param.description))}`,
-      );
+      prop.description = param.description.replace(/\s*\n\s*/g, " ").trim();
     }
     if (param.default !== undefined) {
-      lines.push(`          default: ${yamlEscape(param.default)}`);
+      prop.default = coerce(param.default, param.type);
     }
     if (param.enum && param.enum.length > 0) {
-      lines.push(`          enum:`);
-      for (const val of param.enum) {
-        lines.push(`            - ${yamlEscape(val)}`);
-      }
+      prop.enum = param.enum.map((v) => coerce(v, param.type));
     }
+    properties[param.name] = prop;
   }
 
-  return lines.join("\n");
+  const step: Record<string, unknown> = {
+    title: "Parameters",
+    properties,
+  };
+  if (requiredFields.length > 0) {
+    step.required = requiredFields;
+  }
+
+  return [step];
 }
 
-function renderBody(parameters?: TemplateParameter[]): string {
-  const lines: string[] = [`        body:`];
-  lines.push(`          userRef: \${{ user.ref }}`);
+function buildBody(parameters?: TemplateParameter[]): Record<string, string> {
+  const body: Record<string, string> = {
+    userRef: "${{ user.ref }}",
+  };
   if (parameters && parameters.length > 0) {
     for (const param of parameters) {
-      lines.push(`          ${param.name}: \${{ parameters.${param.name} }}`);
+      body[param.name] = `\${{ parameters.${param.name} }}`;
     }
   }
-  return lines.join("\n");
+  return body;
+}
+
+// The platform config delivers all values as strings. The YAML encoder would
+// quote them as-is (e.g. "3" instead of 3), breaking Backstage form defaults
+// and enums. Convert to the proper JS type so the encoder emits them unquoted.
+function coerce(
+  value: string,
+  type: TemplateParameter["type"],
+): string | number | boolean {
+  switch (type) {
+    case "number":
+      return Number(value);
+    case "boolean":
+      return value === "true";
+    default:
+      return value;
+  }
 }
 
 export function generateLocationYAML(
@@ -135,50 +177,29 @@ export function generateLocationYAML(
   namespace: string | undefined,
   urlSecret: string,
 ): string {
-  const lines: string[] = [
-    `apiVersion: backstage.io/v1alpha1`,
-    `kind: Location`,
-    `metadata:`,
-    `  name: flows-templates-${endpointSlug(baseUrl)}`,
-  ];
+  const metadata: Record<string, unknown> = {
+    name: `flows-templates-${endpointSlug(baseUrl)}`,
+  };
   if (namespace) {
-    lines.push(`  namespace: ${namespace}`);
+    metadata.namespace = namespace;
   }
   const pathPrefix = `/${urlSecret}`;
-  lines.push(`spec:`, `  type: url`, `  targets:`);
-  for (const block of blocks) {
-    lines.push(`    - ${baseUrl}${pathPrefix}/templates/${block.slug}.yaml`);
-  }
-  return lines.join("\n");
-}
 
-function singleLine(value: string): string {
-  return value.replace(/\s*\n\s*/g, " ").trim();
-}
+  const doc = {
+    apiVersion: "backstage.io/v1alpha1",
+    kind: "Location",
+    metadata,
+    spec: {
+      type: "url",
+      targets: blocks.map(
+        (b) => `${baseUrl}${pathPrefix}/templates/${b.slug}.yaml`,
+      ),
+    },
+  };
 
-function yamlEscape(value: string): string {
-  if (
-    value.includes(":") ||
-    value.includes("#") ||
-    value.includes("'") ||
-    value.includes('"') ||
-    value.includes("{") ||
-    value.includes("}") ||
-    value.includes("[") ||
-    value.includes("]") ||
-    value.includes(",") ||
-    value.includes("&") ||
-    value.includes("*") ||
-    value.includes("!") ||
-    value.includes("|") ||
-    value.includes(">") ||
-    value.includes("%") ||
-    value.includes("@") ||
-    value.includes("`") ||
-    value.startsWith(" ") ||
-    value.endsWith(" ")
-  ) {
-    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  }
-  return value;
+  return stringify(doc, {
+    lineWidth: 0,
+    defaultStringType: "PLAIN",
+    defaultKeyType: "PLAIN",
+  });
 }

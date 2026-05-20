@@ -2,7 +2,8 @@
   "type": "module",
   "dependencies": {
     "@slflows/sdk": "^0.13.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.7",
