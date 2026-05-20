@@ -218,10 +218,16 @@ export const backstageEntrypoint: AppBlock = {
             properties: {
               slug: { type: "string" },
               triggeredAt: { type: "string" },
-              userRef: { type: "string" },
+              user: {
+                type: "object",
+                properties: {
+                  ref: { type: "string" },
+                },
+                required: ["ref"],
+              },
               parameters: parametersSchema,
             },
-            required: ["slug", "triggeredAt", "userRef", "parameters"],
+            required: ["slug", "triggeredAt", "user", "parameters"],
           },
         },
       },
@@ -257,7 +263,7 @@ export const backstageEntrypoint: AppBlock = {
     await events.emit({
       slug,
       triggeredAt: new Date().toISOString(),
-      userRef: (userRef as string) ?? "",
+      user: { ref: (userRef as string) ?? "" },
       parameters,
     });
   },
@@ -273,10 +279,16 @@ export const backstageEntrypoint: AppBlock = {
         properties: {
           slug: { type: "string" },
           triggeredAt: { type: "string" },
-          userRef: { type: "string" },
+          user: {
+            type: "object",
+            properties: {
+              ref: { type: "string" },
+            },
+            required: ["ref"],
+          },
           parameters: { type: "object" },
         },
-        required: ["slug", "triggeredAt", "userRef", "parameters"],
+        required: ["slug", "triggeredAt", "user", "parameters"],
       },
     },
   },
