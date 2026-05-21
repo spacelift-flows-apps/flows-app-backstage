@@ -1,0 +1,295 @@
+import { AppBlock, blocks, events, kv } from "@slflows/sdk/v1";
+import {
+  refreshBackstageCatalog,
+  fetchOwners,
+  fetchTemplateTypes,
+} from "../utils/backstageClient.ts";
+import type { TemplateParameter } from "../utils/templateYAML.ts";
+import { IDENTIFIER_PATTERN } from "../utils/validation.ts";
+const RESERVED_SLUGS = new Set(["templates.yaml", "templates", "trigger"]);
+
+export const backstageEntrypoint: AppBlock = {
+  name: "Backstage Entrypoint",
+  description:
+    "Registers a Software Template in Backstage that triggers this workflow when submitted",
+  category: "Backstage",
+  entrypoint: true,
+
+  config: {
+    slug: {
+      name: "Slug",
+      description:
+        "URL-friendly identifier for this template (lowercase letters, numbers, hyphens). Used in the trigger URL and as the template name in Backstage.",
+      type: "string",
+      required: true,
+    },
+    owner: {
+      name: "Owner",
+      description:
+        "Backstage owner reference (e.g., 'platform-team' or 'group:default/platform-team')",
+      type: "string",
+      required: true,
+      suggestValues: async (input) => {
+        const { values, capped } = await fetchOwners(input.app.config);
+        let filtered = values;
+        if (input.searchPhrase) {
+          const search = input.searchPhrase.toLowerCase();
+          filtered = values.filter((v) =>
+            v.label.toLowerCase().includes(search),
+          );
+        }
+        return {
+          suggestedValues: filtered,
+          message: capped
+            ? "Results may be incomplete. You can type a value manually."
+            : undefined,
+        };
+      },
+    },
+    title: {
+      name: "Title",
+      description: "Display title shown in Backstage's template catalog",
+      type: "string",
+      required: true,
+    },
+    description: {
+      name: "Description",
+      description: "Description shown in Backstage's template catalog",
+      type: "string",
+      required: false,
+    },
+    templateType: {
+      name: "Type",
+      description:
+        "Backstage template type, used for filtering (e.g., 'service', 'website', 'library')",
+      type: "string",
+      required: false,
+      default: "service",
+      suggestValues: async (input) => {
+        const values = await fetchTemplateTypes(input.app.config);
+        if (input.searchPhrase) {
+          const search = input.searchPhrase.toLowerCase();
+          return {
+            suggestedValues: values.filter((v) =>
+              v.label.toLowerCase().includes(search),
+            ),
+          };
+        }
+        return { suggestedValues: values };
+      },
+    },
+    // TODO: add suggestValues once multi-select is supported
+    // (https://github.com/spacelift-io/spaceflows/pull/2284).
+    tags: {
+      name: "Tags",
+      description: "Tags for filtering in Backstage's template catalog",
+      type: {
+        type: "array",
+        items: { type: "string" },
+      },
+      required: false,
+    },
+    successMessage: {
+      name: "Success Message",
+      description:
+        "Message shown in Backstage after a successful trigger. Defaults to 'Workflow triggered successfully.'",
+      type: "string",
+      required: false,
+      default: "Workflow triggered successfully.",
+    },
+    parameters: {
+      name: "Form Parameters",
+      description:
+        "Form fields shown to users when they launch this template in Backstage. Each parameter becomes a field in the template form and is passed to the workflow on submission.",
+      required: false,
+      type: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description:
+                "Field identifier (used as the key in the submitted data)",
+            },
+            title: {
+              type: "string",
+              description: "Display label shown in the form",
+            },
+            description: {
+              type: "string",
+              description: "Help text shown below the field",
+            },
+            type: {
+              type: "string",
+              enum: ["string", "number", "boolean"],
+              description: "Field data type",
+            },
+            required: {
+              type: "boolean",
+              description: "Whether the field is required",
+            },
+            default: {
+              type: "string",
+              description: "Default value for the field",
+            },
+            enum: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "List of allowed values (renders as a dropdown for string fields)",
+            },
+          },
+          required: ["name", "title", "type"],
+        },
+      },
+    },
+  },
+
+  async onSync(input) {
+    const slug = input.block.config.slug as string | undefined;
+
+    if (!slug) {
+      return {
+        newStatus: "failed",
+        customStatusDescription: "Slug is required",
+      };
+    }
+
+    if (!IDENTIFIER_PATTERN.test(slug)) {
+      return {
+        newStatus: "failed",
+        customStatusDescription: `Invalid slug "${slug}". Use only lowercase letters, numbers, and hyphens. Must start and end with a letter or number.`,
+      };
+    }
+
+    if (RESERVED_SLUGS.has(slug)) {
+      return {
+        newStatus: "failed",
+        customStatusDescription: `Slug "${slug}" is reserved. Choose a different slug.`,
+      };
+    }
+
+    const { blocks: entrypointBlocks } = await blocks.list({
+      typeIds: ["backstageEntrypoint"],
+    });
+
+    for (const block of entrypointBlocks) {
+      if (block.id === input.block.id) continue;
+      if (block.config?.slug === slug) {
+        return {
+          newStatus: "failed",
+          customStatusDescription: `Slug "${slug}" is already used by another Backstage Entrypoint block. Choose a unique slug.`,
+        };
+      }
+    }
+
+    await kv.block.set({ key: "slug", value: slug });
+    await kv.app.set({
+      key: `confirmed:${input.block.id}`,
+      value: true,
+    });
+
+    await refreshBackstageCatalog(input.app.config, input.app.http.url);
+
+    const parameters = (input.block.config.parameters ??
+      []) as TemplateParameter[];
+    const parametersSchema: Record<string, unknown> =
+      parameters.length > 0
+        ? {
+            type: "object",
+            properties: Object.fromEntries(
+              parameters.map((p) => [p.name, { type: p.type }]),
+            ),
+            required: parameters.filter((p) => p.required).map((p) => p.name),
+          }
+        : { type: "object" };
+
+    return {
+      newStatus: "ready",
+      outputUpdates: {
+        default: {
+          name: "Template Triggered",
+          description:
+            "Emitted when a user submits this Software Template in Backstage",
+          default: true,
+          type: {
+            type: "object",
+            properties: {
+              slug: { type: "string" },
+              triggeredAt: { type: "string" },
+              user: {
+                type: "object",
+                properties: {
+                  ref: { type: "string" },
+                },
+                required: ["ref"],
+              },
+              parameters: parametersSchema,
+            },
+            required: ["slug", "triggeredAt", "user", "parameters"],
+          },
+        },
+      },
+    };
+  },
+
+  async onDrain(input) {
+    await kv.app.delete([`confirmed:${input.block.id}`]);
+
+    const allKeys = await kv.block.list({ keyPrefix: "" });
+    const keysToDelete = allKeys.pairs.map((pair) => pair.key);
+    if (keysToDelete.length > 0) {
+      await kv.block.delete(keysToDelete);
+    }
+
+    // Best-effort: if Backstage is unreachable, it will pick up the
+    // updated location on its next poll cycle once it's back.
+    try {
+      await refreshBackstageCatalog(input.app.config, input.app.http.url);
+    } catch (error) {
+      console.log(`Catalog refresh failed during drain: ${error}`);
+    }
+
+    return { newStatus: "drained" };
+  },
+
+  async onInternalMessage(input) {
+    const slug = input.block.config.slug as string;
+    const body = input.message.body as Record<string, unknown>;
+
+    const { userRef, ...parameters } = body ?? {};
+
+    await events.emit({
+      slug,
+      triggeredAt: new Date().toISOString(),
+      user: { ref: (userRef as string) ?? "" },
+      parameters,
+    });
+  },
+
+  outputs: {
+    default: {
+      name: "Template Triggered",
+      description:
+        "Emitted when a user submits this Software Template in Backstage",
+      default: true,
+      type: {
+        type: "object",
+        properties: {
+          slug: { type: "string" },
+          triggeredAt: { type: "string" },
+          user: {
+            type: "object",
+            properties: {
+              ref: { type: "string" },
+            },
+            required: ["ref"],
+          },
+          parameters: { type: "object" },
+        },
+        required: ["slug", "triggeredAt", "user", "parameters"],
+      },
+    },
+  },
+};
