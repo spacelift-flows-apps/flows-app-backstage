@@ -250,7 +250,7 @@ async function handleTemplatesIndex(
   app: { http: AppHTTPEndpoint; config: Record<string, unknown> },
   urlSecret: string,
 ) {
-  const readyBlocks = await getConfirmedBlocks();
+  const readyBlocks = await getReadyBlocks();
 
   if (readyBlocks.length === 0) {
     await http.respond(request.requestId, {
@@ -279,8 +279,8 @@ async function handleTemplatesIndex(
 }
 
 async function handleTemplateYAML(request: HTTPRequest, slug: string) {
-  const confirmedBlocks = await getConfirmedBlocks();
-  const matchedBlock = confirmedBlocks.find((b) => b.config?.slug === slug);
+  const readyBlocks = await getReadyBlocks();
+  const matchedBlock = readyBlocks.find((b) => b.config?.slug === slug);
 
   if (!matchedBlock) {
     await http.respond(request.requestId, {
@@ -337,8 +337,8 @@ async function handleTrigger(request: HTTPRequest) {
     return;
   }
 
-  const confirmedBlocks = await getConfirmedBlocks();
-  const matchedBlock = confirmedBlocks.find((b) => b.config?.slug === slug);
+  const readyBlocks = await getReadyBlocks();
+  const matchedBlock = readyBlocks.find((b) => b.config?.slug === slug);
 
   if (!matchedBlock) {
     await http.respond(request.requestId, {
@@ -412,17 +412,13 @@ function validateBody(
   return errors;
 }
 
-async function getConfirmedBlocks() {
-  const { blocks: allBlocks } = await blocksApi.list({
+async function getReadyBlocks() {
+  const { blocks: readyBlocks } = await blocksApi.list({
     typeIds: ["backstageEntrypoint"],
+    statuses: ["ready"],
   });
 
-  const confirmed = await kv.app.list({ keyPrefix: "confirmed:" });
-  const confirmedIds = new Set(
-    confirmed.pairs.map((p) => p.key.slice("confirmed:".length)),
-  );
-
-  return allBlocks.filter((b) => confirmedIds.has(b.id));
+  return readyBlocks;
 }
 
 function toBlockConfig(b: { config?: Record<string, unknown> | null }) {
