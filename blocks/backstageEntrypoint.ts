@@ -1,4 +1,4 @@
-import { AppBlock, blocks, events, kv } from "@slflows/sdk/v1";
+import { AppBlock, blocks, events } from "@slflows/sdk/v1";
 import {
   refreshBackstageCatalog,
   fetchOwners,
@@ -184,12 +184,6 @@ export const backstageEntrypoint: AppBlock = {
       }
     }
 
-    await kv.block.set({ key: "slug", value: slug });
-    await kv.app.set({
-      key: `confirmed:${input.block.id}`,
-      value: true,
-    });
-
     await refreshBackstageCatalog(input.app.config, input.app.http.url);
 
     const parameters = (input.block.config.parameters ??
@@ -235,14 +229,6 @@ export const backstageEntrypoint: AppBlock = {
   },
 
   async onDrain(input) {
-    await kv.app.delete([`confirmed:${input.block.id}`]);
-
-    const allKeys = await kv.block.list({ keyPrefix: "" });
-    const keysToDelete = allKeys.pairs.map((pair) => pair.key);
-    if (keysToDelete.length > 0) {
-      await kv.block.delete(keysToDelete);
-    }
-
     // Best-effort: if Backstage is unreachable, it will pick up the
     // updated location on its next poll cycle once it's back.
     try {
