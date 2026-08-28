@@ -8,6 +8,20 @@ import type { TemplateParameter } from "../utils/templateYAML.ts";
 import { IDENTIFIER_PATTERN } from "../utils/validation.ts";
 const RESERVED_SLUGS = new Set(["templates.yaml", "templates", "trigger"]);
 
+// Carries a parameter's allowed values into the output schema, so a downstream
+// block can type-check against it  instead of a bare string.
+function parameterSchema(
+  parameter: TemplateParameter,
+): Record<string, unknown> {
+  const schema: Record<string, unknown> = { type: parameter.type };
+
+  if (parameter.enum && parameter.enum.length > 0) {
+    schema.enum = parameter.enum;
+  }
+
+  return schema;
+}
+
 export const backstageEntrypoint: AppBlock = {
   name: "Backstage Entrypoint",
   description:
@@ -193,7 +207,7 @@ export const backstageEntrypoint: AppBlock = {
         ? {
             type: "object",
             properties: Object.fromEntries(
-              parameters.map((p) => [p.name, { type: p.type }]),
+              parameters.map((p) => [p.name, parameterSchema(p)]),
             ),
             required: parameters.filter((p) => p.required).map((p) => p.name),
           }
